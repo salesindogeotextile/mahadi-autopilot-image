@@ -31,7 +31,7 @@ Background Setting:
 Active civil engineering construction site in broad daylight. Bridge construction, yellow heavy machinery/excavators, soil and gravel ground.
 
 Text & Branding:
-1. Branding: White word "PrimaTex" only (modern sans-serif) at Top-Left. No logos/icons.
+1. Branding: White word "Indo Geotextile" only (modern sans-serif) at Top-Left. No logos/icons.
 2. Main Headline: Bold, large text on the left: "${inputs.overlayText}". 
    - STYLE: USE WHITE COLOR.
    - TYPOGRAPHY: Clear, professional industrial font. USE GENEROUS LETTER SPACING (wide tracking) between characters to ensure perfect readability and prevent typos.
