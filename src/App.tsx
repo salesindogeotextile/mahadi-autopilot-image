@@ -198,8 +198,12 @@ export default function App() {
           .replace(/^-|-$/g, '');
 
         // Upload to WordPress directly from client
-        if (!wpUrl || !wpUsername || !wpPassword) {
-            throw new Error("WordPress credentials missing in sheet");
+        const finalWpUrl = wpUrl || import.meta.env.VITE_WP_URL;
+        const finalWpUsername = wpUsername || import.meta.env.VITE_WP_USERNAME;
+        const finalWpPassword = wpPassword || import.meta.env.VITE_WP_PASSWORD;
+
+        if (!finalWpUrl || !finalWpUsername || !finalWpPassword) {
+            throw new Error("WordPress credentials missing (not in sheet and not in environment variables)");
         }
 
         const base64Data = result.webpUrl.replace(/^data:image\/webp;base64,/, "");
@@ -216,14 +220,14 @@ export default function App() {
         formData.append('title', projectName);
         formData.append('alt_text', projectName);
 
-        let targetUrl = wpUrl.replace(/\/$/, '');
+        let targetUrl = finalWpUrl.replace(/\/$/, '');
         if (!targetUrl.includes('/wp-json')) targetUrl += '/wp-json/wp/v2/media';
         else if (!targetUrl.endsWith('/wp/v2/media')) targetUrl += '/wp/v2/media';
 
         const wpResponse = await axios.post(targetUrl, formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
-            'Authorization': `Basic ${btoa(`${wpUsername}:${wpPassword}`)}`
+            'Authorization': `Basic ${btoa(`${finalWpUsername}:${finalWpPassword}`)}`
           }
         });
 
@@ -369,7 +373,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex flex-col">
-              <span className="font-bold tracking-tight text-xl text-slate-100 uppercase">AutoPilot <span className="text-blue-400 font-light italic capitalize tracking-normal">Image</span> <span className="text-red-600 font-black italic ml-1">Mahadi</span></span>
+              <span className="font-bold tracking-tight text-xl text-slate-100 uppercase">AutoPilot <span className="text-blue-400 font-light italic capitalize tracking-normal">Image</span> <span className="text-red-600 font-black italic ml-1">Mahadi - Indo</span></span>
               <span className="text-[9px] uppercase tracking-[0.3em] text-slate-500 font-bold ml-0.5">Industrial Engine</span>
             </div>
           </div>
