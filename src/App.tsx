@@ -198,12 +198,80 @@ export default function App() {
           .replace(/^-|-$/g, '');
 
         // Upload to WordPress directly from client
-        const finalWpUrl = wpUrl || import.meta.env.VITE_WP_URL;
-        const finalWpUsername = wpUsername || import.meta.env.VITE_WP_USERNAME;
-        const finalWpPassword = wpPassword || import.meta.env.VITE_WP_PASSWORD;
+        if (!wpUrl || !wpUsername || !wpPassword) {
+            throw new Error("WordPress credentials missing in sheet");
+        }
 
-        if (!finalWpUrl || !finalWpUsername || !finalWpPassword) {
-            throw new Error("WordPress credentials missing (not in sheet and not in environment variables)");
+        let wpBaseUrl = wpUrl.replace(/\/$/, '');
+        if (wpBaseUrl.includes('/wp-json')) {
+          wpBaseUrl = wpBaseUrl.split('/wp-json')[0];
+        }
+
+        const wpHeaders = {
+          'Authorization': `Basic ${btoa(`${wpUsername}:${wpPassword}`)}`
+        };
+
+        // 1. Search for a matching post in WordPress by slug or search name
+        let targetPostId: number | null = null;
+        try {
+          setAutoPilotStatus("Mencari post dengan nama sama...");
+          
+          const projectSlug = projectName
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+
+          // Helper to decode HTML entities (like &amp; or &#8211;) in titles
+          const decodeHtml = (html: string) => {
+            if (typeof document === 'undefined') return html;
+            const txt = document.createElement('textarea');
+            txt.innerHTML = html;
+            return txt.value;
+          };
+
+          const isTitleExactMatch = (wpTitleRendered: string, expectedName: string) => {
+            const cleanWp = decodeHtml(wpTitleRendered || "").toLowerCase().trim();
+            const cleanExpected = expectedName.toLowerCase().trim();
+            return cleanWp === cleanExpected;
+          };
+
+          // Try fetching by slug first
+          const slugResponse = await axios.get(`${wpBaseUrl}/wp-json/wp/v2/posts?slug=${projectSlug}&status=any`, {
+            headers: wpHeaders
+          });
+
+          if (slugResponse.data && slugResponse.data.length > 0) {
+            const exactSlugMatch = slugResponse.data.find((p: any) => 
+              isTitleExactMatch(p.title?.rendered, projectName)
+            );
+            if (exactSlugMatch) {
+              targetPostId = exactSlugMatch.id;
+            }
+          }
+
+          // If not found via slug (or if slug didn't match perfectly), search via textual query
+          if (!targetPostId) {
+            const searchResponse = await axios.get(`${wpBaseUrl}/wp-json/wp/v2/posts?search=${encodeURIComponent(projectName)}&status=any`, {
+              headers: wpHeaders
+            });
+            if (searchResponse.data && searchResponse.data.length > 0) {
+              const exactSearchMatch = searchResponse.data.find((p: any) => 
+                isTitleExactMatch(p.title?.rendered, projectName)
+              );
+              if (exactSearchMatch) {
+                targetPostId = exactSearchMatch.id;
+              }
+            }
+          }
+          
+          if (targetPostId) {
+            console.log(`Matching post found: ID ${targetPostId}`);
+          } else {
+            console.log("No exact matching post found. Skipping the media attachment process.");
+          }
+        } catch (postSearchErr) {
+          console.error("Gagal mendeteksi post di WordPress:", postSearchErr);
         }
 
         const base64Data = result.webpUrl.replace(/^data:image\/webp;base64,/, "");
@@ -219,19 +287,41 @@ export default function App() {
         formData.append('file', blob, `${sanitizedFileName}.webp`);
         formData.append('title', projectName);
         formData.append('alt_text', projectName);
+        if (targetPostId) {
+          formData.append('post', targetPostId.toString()); // Attach media to this post
+        }
 
-        let targetUrl = finalWpUrl.replace(/\/$/, '');
-        if (!targetUrl.includes('/wp-json')) targetUrl += '/wp-json/wp/v2/media';
-        else if (!targetUrl.endsWith('/wp/v2/media')) targetUrl += '/wp/v2/media';
+        let uploadUrl = `${wpBaseUrl}/wp-json/wp/v2/media`;
 
-        const wpResponse = await axios.post(targetUrl, formData, {
+        setAutoPilotStatus("Uploading to WP...");
+        const wpResponse = await axios.post(uploadUrl, formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
-            'Authorization': `Basic ${btoa(`${finalWpUsername}:${finalWpPassword}`)}`
+            ...wpHeaders
           }
         });
 
         if (wpResponse.data && wpResponse.data.source_url) {
+          const mediaId = wpResponse.data.id;
+          
+          // 2. Set as Featured Image / Thumbnail of the post if found
+          if (targetPostId && mediaId) {
+            setAutoPilotStatus("Sematkan ke Post...");
+            try {
+              await axios.post(`${wpBaseUrl}/wp-json/wp/v2/posts/${targetPostId}`, {
+                featured_media: mediaId
+              }, {
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...wpHeaders
+                }
+              });
+              console.log("Berhasil menyematkan featured image ke post.");
+            } catch (postUpdateErr) {
+              console.error("Gagal menyematkan featured image:", postUpdateErr);
+            }
+          }
+
           setAutoPilotStatus("Success! Published.");
           await axios.post(gasUrl, {
             module: 'image',
@@ -782,10 +872,11 @@ export default function App() {
               />
             </div>
           </div>
-          <span className="text-slate-400">&copy; 2026 PT PRIMATEX</span>
+          <span className="text-slate-400">&copy; 2026 INDOGEOTEXTILE</span>
         </div>
       </footer>
     </div>
 
   );
 }
+
